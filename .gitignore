@@ -1,0 +1,8 @@
+.vscode
+data
+out
+output
+*.sens
+sens
+sensReader
+reader
