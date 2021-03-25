@@ -571,7 +571,7 @@ namespace ml {
 			void compressColor(const vec3uc* color, unsigned int width, unsigned int height, COMPRESSION_TYPE_COLOR type) {
 
 				if (type == TYPE_RAW) {
-					std::cout << "TYPE_RAW\n";
+					// std::cout << "TYPE_RAW\n";
 					if (m_colorSizeBytes != width*height) {
 						freeColor();
 						m_colorSizeBytes = width*height*sizeof(vec3uc);

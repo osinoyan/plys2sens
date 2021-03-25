@@ -1,5 +1,8 @@
-// ------------ MODIFIED AT 2021/02/02 BY LYWANG ---------------------
+// ------------ MODIFIED AT 2021/03/18 BY LYWANG ---------------------
 // ---------- FOR CONVERTING [.PLY] TO [.SENS] FILE ------------------
+// ---------- OPENMP VERSION ------------------
+
+#include <omp.h>
 #include "sensorData.h"
 #include <dirent.h>
 #include <string>
@@ -59,6 +62,7 @@ public:
 
 bool pointCompare(CloudPoint a, CloudPoint b);
 void readPly(string inFile, vector<CloudPoint> &points);
+void histogramEq(ml::vec3uc *colorMap);
 void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points);
 void convertPlyToSens(vector<string>& inFiles, string outFile, ml::SensorData& sd);
 
@@ -214,12 +218,41 @@ void readPly(string inFile, vector<CloudPoint> &points){
 	ifs.close();
 }
 
+void histogramEq(ml::vec3uc *colorMap){
+	const int MN = width*height;
+	int nk[255] = {0};
+	for (int i=0; i<MN; i++){
+		unsigned char color[3];
+		memcpy(&color, colorMap+i, sizeof(ml::vec3uc));
+		nk[color[0]]++;
+	}
+	int nk_acc[255] = {0};
+	nk_acc[0] = nk[0];
+	unsigned char target[255] = {0}; // 對照表
+	for (int i=1; i<255; i++){
+		nk_acc[i] = nk_acc[i-1] + nk[i];
+		double pk = (double)(nk_acc[i]) * 255/MN;
+		int pk_round = (int)(pk + 0.5);
+		target[i] = (unsigned char)pk_round;
+		// printf("%d\n", pk_round);
+	}
+	// printf("-----------------------\n");
+	// PAUSE
+	for (int i=0; i<MN; i++){
+		unsigned char color[3];
+		memcpy(&color, colorMap+i, sizeof(ml::vec3uc));
+		unsigned char n_color = target[color[0]];
+		color[0] = color[1] = color[2] = n_color;
+		memcpy(colorMap+i, &color, sizeof(ml::vec3uc));
+	}
+	// PAUSE
+}
+
 void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points){
 	// compressDepth(const unsigned short* depth, unsigned int width, unsigned int height, COMPRESSION_TYPE_DEPTH type)
 	// RGBDFrame& addFrame(const vec3uc* color, const unsigned short* depth, const mat4f& cameraToWorld = mat4f::identity(), UINT64 timeStampColor = 0, UINT64 timeStampDepth = 0)
 
 	vector<CloudPoint> projectedPoints; // project 3D points to a 2D plane
-
 	for (int i=0; i<points.size(); i++){
 		CloudPoint tp = points[i];
 		double tx = tp.x;
@@ -242,12 +275,12 @@ void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points){
 	unsigned short *depthMap = new unsigned short [width*height];
 	ml::vec3uc *colorMap = new ml::vec3uc [width*height];
 	// ml::vec3uc *colorMap = NULL;
-	
+	#pragma omp parallel for
 	for (int iw=0; iw<width; iw++){ // w=450
 		for (int ih=0; ih<height; ih++){ // h=350
 			// printf("[%d][%d]\n", iw, ih);
 			CloudPoint nearestPoint = CloudPoint();
-			double gr = 10; // grid radius !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			double gr = 2; // grid radius !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 			double maxSqrDist = gr*gr*2 + 1; // out of a grid
 			for (int i=0; i<projectedPoints.size(); i++){
 				CloudPoint p = projectedPoints[i];
@@ -277,11 +310,11 @@ void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points){
 				ml::vec3uc *pc = (ml::vec3uc*)std::malloc(sizeof(ml::vec3uc));
 				memcpy(pc, &zeroColor, sizeof(ml::vec3uc));
 				colorMap[ih*width + iw] = *pc;
-				free(pc);
+				// free(pc);
 			} else {
 				depthMap[ih*width + iw] = (unsigned short)(nearestPoint.z * 1000);
 				double a = nearestPoint.a;
-				a = a*5; // 調亮
+				// a = a*3; // 調亮
 				int i_a = (int)a;
 				i_a = (i_a > 255) ? 225 : i_a;
                 i_a = (i_a < 0) ? 0 : i_a;
@@ -300,6 +333,8 @@ void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points){
 			}
 		}
 	}
+
+	histogramEq(colorMap);
 	/*
  		RGBDFrame& addFrame(
 			 const vec3uc* color, const unsigned short* depth, 
