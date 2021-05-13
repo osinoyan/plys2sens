@@ -8,3 +8,9 @@ sensReader
 reader
 sens_mp
 mptest
+*.dmp
+*.dmp_old
+*.ply
+binply2dmp
+conver2dmp
+pose_*

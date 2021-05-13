@@ -1,49 +1,26 @@
-// ------------ MODIFIED AT 2021/03/18 BY LYWANG ---------------------
-// ---------- FOR CONVERTING [.PLY] TO [.SENS] FILE ------------------
-// ---------- OPENMP VERSION ------------------
+/////////////////////////////////////////////////////////////////////////
+// ---------------- MODIFIED AT 2021/03/25 BY LYWANG ----------------- //
+// ------------------------- OPENMP VERSION -------------------------- //
+//   FOR CONVERTING [.PLY] TO [.DMP] FILE WHICH IS A NEW FORMAT FOR    //
+//   STORING 2D DEPTH MAP.                                             //
+/////////////////////////////////////////////////////////////////////////
 
 #include <omp.h>
 #include "sensorData.h"
 #include <dirent.h>
 #include <string>
 #include <vector>
-#define _MSC_ ml::SensorData::CalibrationData
-#define _MS_ ml::SensorData
+#include <limits>
 #define PAUSE printf("Press Enter key to continue..."); fgetc(stdin);  
 
 using namespace std;
 	
 const int width = 450;
 const int height = 350;
-// const int width = 512;
-// const int height = 384;
 const double fx = 500;
 const double fy = 500;
 const double cx = 225;
 const double cy = 175;
-
-//THIS IS A DEMO FUNCTION: HOW TO DECODE .SENS FILES: CHECK IT OUT! (doesn't do anything real though)
-void processFrame(const ml::SensorData& sd, size_t frameIdx) {
-	
-	//de-compress color and depth values
-	ml::vec3uc* colorData = sd.decompressColorAlloc(frameIdx);
-	unsigned short* depthData = sd.decompressDepthAlloc(frameIdx);
-
-	//dimensions of a color/depth frame
-	sd.m_colorWidth;
-	sd.m_colorHeight;
-	sd.m_depthWidth;
-	sd.m_depthHeight;
-	
-	for (unsigned int i = 0; i < sd.m_depthWidth * sd.m_depthHeight; i++) {
-		//convert depth values to m:
-		float depth_in_meters = sd.m_depthShift * depthData[i];
-	}
-
-	std::free(colorData);
-	std::free(depthData);
-}
-
 
 class CloudPoint {
 public:
@@ -65,26 +42,24 @@ public:
 bool pointCompare(CloudPoint a, CloudPoint b);
 void readPly(string inFile, vector<CloudPoint> &points);
 void histogramEq(ml::vec3uc *colorMap);
-void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points);
-void convertPlyToSens(vector<string>& inFiles, string outFile, ml::SensorData& sd);
+// FOR DMP
+void convertPlyToDmp(vector<string>& inFiles, string outFile);
+void convertAndWriteRDFrame(ofstream &out, vector<CloudPoint> &points);
 
 // MAIN ----------------------------------------------------
 int main(int argc, char* argv[])
 {
-#ifdef WIN32
-#if defined(DEBUG) | defined(_DEBUG)
-	_CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-#endif
-#endif
 	try {
 		//non-cached read
 		std::string inPath = "scene_00.ply";
-		std::string outFile = "scene_00.sens";
+		std::string outFile = "scene_00.dmp";
 		if (argc >= 2) inPath = std::string(argv[1]);
 		else {
-			std::cout << "run ./sens <path/to/plys>";
-			std::cout << "type in path manually: ";
+			std::cout << "run ./sens <dir/of/plys> <path/to/dmp>";
+			std::cout << "type in <dir/of/plys> manually: ";
 			std::cin >> inPath;
+			std::cout << "type in <path/to/dmp> manually: ";
+			std::cin >> outFile;
 		}
 		if (argc == 3) {
 			outFile = std::string(argv[2]);
@@ -124,47 +99,27 @@ int main(int argc, char* argv[])
 		/////////////////////////////////////////////////////////////////////////
 		sort(files.begin(), files.end());
 		std::cout << "loading from files... \n";
-		ml::SensorData sd = ml::SensorData();
-		convertPlyToSens(files, outFile, sd);
-
+		convertPlyToDmp(files, outFile);
 		//////////////////////////////////////////////////////////////////////
-
-
 		std::cout << "done!" << std::endl;
-
-		std::cout << sd << std::endl;
-
 		std::cout << std::endl;
 	}
 	catch (const std::exception& e)
 	{
-#ifdef WIN32
-		MessageBoxA(NULL, e.what(), "Exception caught", MB_ICONERROR);
-#else
 		std::cout << "Exception caught! " << e.what() << std::endl;
-#endif
 		exit(EXIT_FAILURE);
 	}
 	catch (...)
 	{
-#ifdef WIN32
-		MessageBoxA(NULL, "UNKNOWN EXCEPTION", "Exception caught", MB_ICONERROR);
-#else
 		std::cout << "Exception caught! (unknown)";
-#endif
 		exit(EXIT_FAILURE);
 	}
 	
 	std::cout << "All done :)" << std::endl;
-
-#ifdef WIN32
-	std::cout << "<press key to continue>" << std::endl;
-	getchar();
-#endif
 	return 0;
 }
 
-// FUNCTIONS -----------------------------------------------
+// FUNCTIONS -------------------------------------------------------------
 bool pointCompare(CloudPoint a, CloudPoint b){
 	if (a.x == b.x) return a.y < b.y;
     return a.x < b.x;
@@ -181,9 +136,6 @@ void readPly(string inFile, vector<CloudPoint> &points){
 
 	// parsing payload
 	int counter = 0;
-	double fx = 500;
-	double fy = 500;
-	// double k1 = 0.000001;
 
 	while (ifs.good()) {
 		string s;
@@ -198,14 +150,9 @@ void readPly(string inFile, vector<CloudPoint> &points){
 		} else if (counter == 2){
 			z = atof(s.c_str());
 		} else if (counter == 3){
-			if (x == 0 && y == 0 && z == 0){
-				// exclude the outlier
-			} else {
-				// amp = atof(s.c_str());
-				// points.push_back(CloudPoint(x, y, z, amp));
-			}
+			// do nothing
 		} else if (counter == 4){
-			if (x == 0 && y == 0 && z == 0){
+			if (z == 0){
 				// exclude the outlier
 			} else {
 				red = atof(s.c_str());
@@ -250,10 +197,75 @@ void histogramEq(ml::vec3uc *colorMap){
 	// PAUSE
 }
 
-void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points){
-	// compressDepth(const unsigned short* depth, unsigned int width, unsigned int height, COMPRESSION_TYPE_DEPTH type)
-	// RGBDFrame& addFrame(const vec3uc* color, const unsigned short* depth, const mat4f& cameraToWorld = mat4f::identity(), UINT64 timeStampColor = 0, UINT64 timeStampDepth = 0)
+// FOR DMP ---------------------------------------------------------------
+void convertPlyToDmp(vector<string>& inFiles, string outFile){
+	ofstream out(outFile, ios::binary);
+	if (!out) {
+		throw runtime_error("Unable to open file for writing: " + outFile);
+	}
+	// WRITE HEADER --------------------------------------------------
+	char checkFlag[] = "_dmp_yee_";
+	uint32_t n_frame = inFiles.size();
+	uint32_t w_width = width;
+	uint32_t w_height = height;
+	out.write((const char *) &checkFlag, sizeof(checkFlag));
+	out.write((const char *) &n_frame, sizeof(uint32_t));
+	out.write((const char *) &w_width, sizeof(uint32_t));
+	out.write((const char *) &w_height, sizeof(uint32_t));
 
+	// WRITE DATA -----------------------------------------------------
+	for(int i=0; i<inFiles.size(); i++){
+		if (i == n_frame) break;
+		string file = inFiles[i];
+		printf("Converting [%s] ... [%d/%d]\n", file.c_str(), i+1, (int)(inFiles.size()));
+		vector<CloudPoint> points;
+		readPly(file, points);
+		convertAndWriteRDFrame(out, points);
+	}
+	out.close();
+
+	// TRY TO READ FILE -----------------------------------------------
+	ifstream rf(outFile, ios::binary);
+	if (!rf) {
+		cout << "Cannot open file!" << endl;
+		exit(1);
+   	}
+	char flag[10];
+	uint32_t n_frame_r;
+	uint32_t r_width;
+	uint32_t r_height;
+	rf.read((char *) &flag, sizeof(flag));
+	rf.read((char *) &n_frame_r, sizeof(uint32_t));
+	rf.read((char *) &r_width, sizeof(uint32_t));
+	rf.read((char *) &r_height, sizeof(uint32_t));
+	printf("%s\n", flag);
+	printf("%u\n", n_frame_r);
+	printf("%u\n", r_width);
+	printf("%u\n", r_height);
+
+	// for (int i=0; i<n_frame_r; i++){
+	// 	uint8_t *colorMap = new uint8_t[width*height];
+	// 	float *depthMap = new float[width*height];
+	// 	rf.read((char *) depthMap, sizeof(float)*width*height);
+	// 	rf.read((char *) colorMap, sizeof(uint8_t)*width*height);
+
+	// 	for (int iw=0; iw<width; iw++){ // w=450
+	// 		for (int ih=0; ih<height; ih++){ // h=350
+	// 			uint8_t w_red = colorMap[ih*width + iw];
+	// 			float w_depth = depthMap[ih*width + iw];
+	// 			printf("%d\n", (int)w_red);
+	// 			printf("%f\n", w_depth);
+	// 			PAUSE
+	// 		}
+	// 	}
+	// 	delete [] colorMap, depthMap;
+	// }
+
+	rf.close();
+	exit(0);
+}
+
+void convertAndWriteRDFrame(ofstream &out, vector<CloudPoint> &points){
 	vector<CloudPoint> projectedPoints; // project 3D points to a 2D plane
 	for (int i=0; i<points.size(); i++){
 		CloudPoint tp = points[i];
@@ -267,107 +279,75 @@ void convertToRGBDFrame(ml::SensorData& sd, vector<CloudPoint> &points){
 		tx = (tx + cx); 
 		ty = (ty + cy); 
 		// ty = height - (ty + cy); 
-
-		// printf("(%lf, %lf, %lf, %lf)\n", tx, ty, tz, tp.a);
 		CloudPoint px = CloudPoint(tx, ty, tz, tp.a);
 		projectedPoints.push_back(px);
 	}
 
-	// nearest neighbor // unsigned short 0~65535
-	unsigned short *depthMap = new unsigned short [width*height];
-	ml::vec3uc *colorMap = new ml::vec3uc [width*height];
-	// ml::vec3uc *colorMap = NULL;
+	// nearest neighbor // float32
+	uint8_t *colorMap = new uint8_t[width*height];
+	float *depthMap = new float[width*height];
+	memset(colorMap, 0, sizeof(uint8_t)*width*height);
+	memset(depthMap, 0, sizeof(float)*width*height);
+	
 	#pragma omp parallel for
 	for (int iw=0; iw<width; iw++){ // w=450
 		for (int ih=0; ih<height; ih++){ // h=350
 			// printf("[%d][%d]\n", iw, ih);
 			CloudPoint nearestPoint = CloudPoint();
 			double gr = 2; // grid radius !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-			double maxSqrDist = gr*gr*2 + 1; // out of a grid
+			const double MXSqrDist = gr*gr*2 + 1; // out of a grid
+			double curSqrDist = MXSqrDist;
 			for (int i=0; i<projectedPoints.size(); i++){
 				CloudPoint p = projectedPoints[i];
 				// whether the point in 2x2 grid
 				if (p.x > iw - gr && p.x < iw + gr &&
 				    p.y > ih - gr && p.y < ih + gr){
-					// printf("\t(%.3lf, %.3lf)\n", p.x, p.y);
-					double sqrDistToCenter =
-						(p.x-iw)*(p.x-iw) + (p.y-ih)*(p.y-ih) ;
-					if (sqrDistToCenter < maxSqrDist){
-						maxSqrDist = sqrDistToCenter;
+					double sqrDistToCenter = (p.x-iw)*(p.x-iw) + (p.y-ih)*(p.y-ih);
+					if (sqrDistToCenter < curSqrDist){
+						// try to find the nearest point to the pixel center
+						curSqrDist = sqrDistToCenter;
 						nearestPoint = p;
 					}
 				}
 			}
-			
-			// color 全部都給他媽的零
-			// unsigned char asshole[3] = {0, 0, 0};
-			// ml::vec3uc pc;
-			// memcpy(&pc, &asshole, sizeof(asshole));
-			// colorMap[ih*width + iw] = pc;
 		
-			if(maxSqrDist > gr*gr*2 + 1){
-				depthMap[ih*width + iw] = 65535;
-				// color 全部都給他媽的零
-				unsigned char zeroColor[3] = {0, 0, 0};
-				ml::vec3uc *pc = (ml::vec3uc*)std::malloc(sizeof(ml::vec3uc));
-				memcpy(pc, &zeroColor, sizeof(ml::vec3uc));
-				colorMap[ih*width + iw] = *pc;
-				// free(pc);
+			if(curSqrDist > gr*gr*2 + 1){
+				// point not found
+				// this pixel is set to the farest point
+				// first color R [uint8] and then D [float32]
+				uint8_t w_red = 0;
+				float w_depth = numeric_limits<float>::max();
+				colorMap[ih*width + iw] = w_red;
+				depthMap[ih*width + iw] = w_depth;
+				// cout << "red: " << (int)w_red << "\n";
+				// cout << "depth: " << w_depth << "\n";
 			} else {
-				depthMap[ih*width + iw] = (unsigned short)(nearestPoint.z * 1000);
+				// found the point in the circle around pixel center with radius [gr]
+				// depthMap[ih*width + iw] = (unsigned short)(nearestPoint.z * 1000);
+				uint8_t w_red = 0;
+				float w_depth = (float)nearestPoint.z;
+
+				// color red
 				double a = nearestPoint.a;
 				// a = a*3; // 調亮
 				int i_a = (int)a;
 				i_a = (i_a > 255) ? 225 : i_a;
                 i_a = (i_a < 0) ? 0 : i_a;
-				unsigned char ass = (unsigned char)(i_a);
-				unsigned char assColor[3] = {ass, ass, ass};
-				ml::vec3uc pc;
-				memcpy(&pc, &assColor, sizeof(ml::vec3uc));
-				colorMap[ih*width + iw] = pc;
-				
-				// print
-				// unsigned char tmp[3];
-				// memcpy(&tmp, colorMap+ih*width+iw, sizeof(ml::vec3uc));
-				// cout << " " << (int)((unsigned char)tmp[0]) << " ";
-				// cout << " " << (int)((unsigned char)tmp[1]) << " ";
-				// cout << " " << (int)((unsigned char)tmp[2]) << "\n";
+				w_red = (uint8_t)(i_a);
+				colorMap[ih*width + iw] = w_red;
+				depthMap[ih*width + iw] = w_depth;
+
+				// cout << "red: " << (int)w_red << "\n";
+				// cout << "depth: " << w_depth << "\n";
 			}
+			// PAUSE
 		}
 	}
 
-	histogramEq(colorMap);
-	/*
- 		RGBDFrame& addFrame(
-			 const vec3uc* color, const unsigned short* depth, 
-			 const mat4f& cameraToWorld = mat4f::identity(), 
-			 UINT64 timeStampColor = 0, UINT64 timeStampDepth = 0)
-	*/
 
-	sd.addFrame(colorMap, depthMap);
+	out.write((const char *) depthMap, sizeof(float)*width*height );
+	out.write((const char *) colorMap, sizeof(uint8_t)*width*height );
+	// histogramEq(colorMap);
 
 	delete [] colorMap, depthMap;
 }
-
-void convertPlyToSens(vector<string>& inFiles, string outFile, ml::SensorData& sd){
-	unsigned int colorWidth = width;
-	unsigned int colorHeight = height;
-	unsigned int depthWidth = width;
-	unsigned int depthHeight = height;
-	const _MSC_ calibrationColor;
-	const _MSC_ calibrationDepth;
-	sd.initDefault(
-		colorWidth, colorHeight, depthWidth, depthHeight,
-		calibrationColor, calibrationDepth
-	);
-
-	for(int i=0; i<inFiles.size(); i++){
-		string file = inFiles[i];
-		printf("Converting [%s] ... [%d/%d]\n", file.c_str(), i, (int)(inFiles.size())-1);
-		vector<CloudPoint> points;
-		readPly(file, points);
-		convertToRGBDFrame(sd, points);
-	}
-	sd.saveToFile(outFile);
-}
-
