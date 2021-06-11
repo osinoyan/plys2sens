@@ -363,11 +363,13 @@ void convertPlyToSens(vector<string>& inFiles, string outFile, ml::SensorData& s
 
 	for(int i=0; i<inFiles.size(); i++){
 		string file = inFiles[i];
-		printf("Converting [%s] ... [%d/%d]\n", file.c_str(), i, (int)(inFiles.size())-1);
+		printf("\rConverting [%s] ... [%d/%d]", file.c_str(), i, (int)(inFiles.size())-1);
+		fflush(stdout);
 		vector<CloudPoint> points;
 		readPly(file, points);
 		convertToRGBDFrame(sd, points);
 	}
+	printf("\n");
 	sd.saveToFile(outFile);
 }
 

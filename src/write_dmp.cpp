@@ -217,11 +217,13 @@ void convertPlyToDmp(vector<string>& inFiles, string outFile){
 	for(int i=0; i<inFiles.size(); i++){
 		if (i == n_frame) break;
 		string file = inFiles[i];
-		printf("Converting [%s] ... [%d/%d]\n", file.c_str(), i+1, (int)(inFiles.size()));
+		printf("\rConverting [%s] ... [%d/%d]", file.c_str(), i+1, (int)(inFiles.size()));
+		fflush(stdout);
 		vector<CloudPoint> points;
 		readPly(file, points);
 		convertAndWriteRDFrame(out, points);
 	}
+	printf("\n");
 	out.close();
 
 	// TRY TO READ FILE -----------------------------------------------

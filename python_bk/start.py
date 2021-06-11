@@ -6,6 +6,7 @@
 # all time unit are picoseconds (1 picosec = 1e-12 sec)
 import sys
 import os
+import time
 # os.environ["CUDA_VISIBLE_DEVICES"]="0"
 sys.path.insert(0, '../sim/')
 import argparse
@@ -92,6 +93,10 @@ def tof_net_func(features, labels, mode, params):
         full = features['noisy']
         intensity = features['intensity']
         rgb = features['rgb']
+
+        ######################################################
+        norm_noisy = features['norm_noisy']
+        ######################################################
 
         depth_kinect = full
         amplitude_kinect = intensity
@@ -336,6 +341,7 @@ def tof_net_func(features, labels, mode, params):
             # FOR out_sens.cpp -----------------------------------------
             "rgb_input": rgb_kinect,
             "depth": depth_outs,
+            "norm_noisy": norm_noisy,
             # "offset": offsets
         }
     else:
@@ -498,7 +504,18 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
         pre_depth = np.squeeze(result[i]['depth'])
         input_depth = np.squeeze(result[i]['depth_input'])
         input_rgb = np.squeeze(result[i]['rgb_input'])
+
+
+        norm_noisy = np.squeeze(result[i]['norm_noisy'])
+        print('output[{}/{}]\r'.format(i, len(result)))
+        print('\n')
         
+        pre_depth *= norm_noisy
+        input_depth *= norm_noisy
+
+        # pre_depth *= 4
+        # input_depth *= 4
+
         input_depth_png = input_depth * 100
         output_depth_png = pre_depth * 100
 
@@ -544,6 +561,7 @@ if __name__ == '__main__':
     parser.add_argument('--addGradient', help="add the gradient loss function", default='sobel_gradient', type=str)
     parser.add_argument('--decayEpoch', help="after n epoch, decay the learning rate", default=2, type=int)
     parser.add_argument('--shmFlag', help="using shm increase the training speed", default=False, type=bool)
+    parser.add_argument('--dataset', help='dataset', default='', type=str)
     args = parser.parse_args()
 
     if args.shmFlag == True:
@@ -558,6 +576,8 @@ if __name__ == '__main__':
         mkdir_name = args.trainingSet + '_' + args.lossType + '_dR' + str(args.deformableRange)
     elif args.trainingSet == 'TB':
         mkdir_name = 'tof_FT3' + '_' + args.lossType
+    # else:
+    #     mkdir_name = 'yee' + '_' + args.lossType
     else:
         mkdir_name = args.trainingSet + '_' + args.lossType
     if args.postfix is not None:
@@ -572,9 +592,24 @@ if __name__ == '__main__':
         os.mkdir(output_dir)
 
     dataset_path = os.path.join(dataset_dir, args.trainingSet)
-    train_data_path = os.path.join(dataset_path, args.trainingSet + '_train.tfrecords')
-    evaluate_data_path = os.path.join(dataset_path, args.trainingSet + '_eval.tfrecords')
-    all_data_path = os.path.join(dataset_path, args.trainingSet + '_all.tfrecords')
+    
+    if args.dataset != '':
+        dataset_path = os.path.join(dataset_path, args.dataset)
+    
+    if args.dataset == 'tof_ft3':
+        train_data_path = os.path.join(dataset_path, 'tof_FT3_train.tfrecords')
+        evaluate_data_path = os.path.join(dataset_path, 'tof_FT3_eval.tfrecords')
+    else:
+        train_data_path = os.path.join(dataset_path, args.trainingSet + '_train.tfrecords')
+        evaluate_data_path = os.path.join(dataset_path, args.trainingSet + '_eval.tfrecords')
+        all_data_path = os.path.join(dataset_path, args.trainingSet + '_all.tfrecords')
+
+    print('train_data_path: {}'.format(train_data_path))
+    print('evaluate_data_path: {}'.format(evaluate_data_path))
+    # print('all_data_path: {}'.format(all_data_path))
+    time.sleep(5)
+    print('OK?')
+    # input()
 
 
     if args.flagMode == 'train':
@@ -598,7 +633,7 @@ if __name__ == '__main__':
                         image_shape=args.imageShape,
                         add_gradient=args.addGradient)
     elif args.flagMode == 'test':
-        dataset_output(result_path=output_dir,evaluate_data_path=evaluate_data_path, model_dir=model_dir, loss_fn=args.lossType,
+        dataset_output(result_path=output_dir,evaluate_data_path=train_data_path, model_dir=model_dir, loss_fn=args.lossType,
                         batch_size=args.batchSize, checkpoint_steps=args.checkpointSteps, deformable_range = args.deformableRange,
                         model_name = args.modelName, loss_mask = args.lossMask, gpu_Number = args.gpuNumber, training_set = args.trainingSet,
                         image_shape = args.imageShape)

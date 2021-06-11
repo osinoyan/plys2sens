@@ -16,7 +16,7 @@ python start.py -b 2\
    --lr 0.0004 --trainingSet yee --imageShape 350 450\
     --lossType mean_l1 --addGradient sobel_gradient\
      --gpuNumber 4 --evalSteps 1200\
-      --flagMode test --checkpointSteps 233200
+      --flagMode test --checkpointSteps $1
 
 ## TRAINING ---------------------------------------------
 

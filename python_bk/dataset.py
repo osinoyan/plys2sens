@@ -171,9 +171,25 @@ def preprocessing_yee(features, labels):
     # intensity_p = tf.image.resize_bilinear(intensity_p, [384, 512, 1])
     # gt_p = tf.image.resize_bilinear(gt_p, [384, 512, 1])
 
+    # norm_noisy = tf.norm(noisy_p)/100
+    # norm_noisy = 4.0
+    norm_noisy = tf.reduce_max(noisy_p)
+    noisy_p /= norm_noisy
+    gt_p /= norm_noisy
+
+    features['norm_noisy'] = norm_noisy
+
+    # intensity_p = tf.nn.l2_normalize(intensity_p, dim = 0)
+    # noisy_p = tf.nn.l2_normalize(noisy_p, dim = 0)
+    # gt_p = tf.nn.l2_normalize(gt_p, dim = 0)
+
     features['rgb'] = rgb_p
     features['intensity'] = intensity_p
+
+    # features['noisy'] = gt_p - noisy_p
+    # features['noisy'] = gt_p
     features['noisy'] = noisy_p
+    
     labels['gt'] = gt_p
 
     return features, labels

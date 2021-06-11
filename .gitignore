@@ -13,4 +13,8 @@ mptest
 *.ply
 binply2dmp
 conver2dmp
+out_sens
+yee_mean_l1_*
+dmp_gt*
+dmp_noisy*
 pose_*

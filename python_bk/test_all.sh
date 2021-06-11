@@ -1,7 +1,4 @@
-#!/usr/bin/fish
-
-
-
+#!/bin/bash
 
 
 python start.py -b 2\
@@ -10,4 +7,5 @@ python start.py -b 2\
    --lr 0.0004 --trainingSet yee --imageShape 350 450\
     --lossType mean_l1 --addGradient sobel_gradient\
      --gpuNumber 4 --evalSteps 1200\
-      --flagMode test_all --checkpointSteps 250000
+      --flagMode test_all --checkpointSteps $1\
+        # --dataset $2
