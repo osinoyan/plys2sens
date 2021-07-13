@@ -144,12 +144,13 @@ def preprocessing_yee(features, labels):
     :return:
     (350, 450, 1) => (384, 512, 1)
     """
-    print(features['noisy'])
 
     rgb_p = features['rgb']
     noisy_p = features['noisy']
     intensity_p = features['intensity']
     gt_p = labels['gt']
+
+    max_dep = features['max_dep']
 
     paddings = tf.constant([[17, 17], [31, 31], [0, 0]])
    
@@ -173,7 +174,7 @@ def preprocessing_yee(features, labels):
 
     # norm_noisy = tf.norm(noisy_p)/100
     # norm_noisy = 4.0
-    norm_noisy = tf.reduce_max(noisy_p)
+    norm_noisy = max_dep
     noisy_p /= norm_noisy
     gt_p /= norm_noisy
 
@@ -186,7 +187,7 @@ def preprocessing_yee(features, labels):
     features['rgb'] = rgb_p
     features['intensity'] = intensity_p
 
-    # features['noisy'] = gt_p - noisy_p
+    # features['noisy'] = gt_p - noisy_p + 0.05
     # features['noisy'] = gt_p
     features['noisy'] = noisy_p
     
@@ -414,25 +415,32 @@ def imgs_input_fn_yee(filenames, height, width, shuffle=False, repeat_count=1, b
     def _parse_function(serialized, height=height, width=width):
         features = \
             {
+                'max_dep': tf.FixedLenFeature([], tf.string),
                 'noisy': tf.FixedLenFeature([], tf.string),
                 'intensity': tf.FixedLenFeature([], tf.string),
                 'rgb': tf.FixedLenFeature([], tf.string),
-                'gt': tf.FixedLenFeature([], tf.string)
+                'gt': tf.FixedLenFeature([], tf.string),
             }
 
         parsed_example = tf.parse_single_example(serialized=serialized, features=features)
 
+        max_dep_shape = tf.stack([1])
         noisy_shape = tf.stack([height, width, 1])
-        intensity_shape = tf.stack([height , width , 1])
+        intensity_shape = tf.stack([height, width , 1])
         rgb_shape = tf.stack([height, width, 3])
         gt_shape = tf.stack([height, width, 1])
 
+        max_dep_raw = parsed_example['max_dep']
         noisy_raw = parsed_example['noisy']
         intensity_raw = parsed_example['intensity']
         rgb_raw = parsed_example['rgb']
         gt_raw = parsed_example['gt']
 
         # decode the raw bytes so it becomes a tensor with type
+
+        max_dep = tf.decode_raw(max_dep_raw, tf.float32)
+        max_dep = tf.cast(max_dep, tf.float32)
+        max_dep = tf.reshape(max_dep, max_dep_shape)
 
         noisy = tf.decode_raw(noisy_raw, tf.float32)
         noisy = tf.cast(noisy, tf.float32)
@@ -450,7 +458,7 @@ def imgs_input_fn_yee(filenames, height, width, shuffle=False, repeat_count=1, b
         gt = tf.cast(gt, tf.float32)
         gt = tf.reshape(gt, gt_shape)
 
-        features = {'noisy': noisy, 'intensity': intensity, 'rgb': rgb}
+        features = {'max_dep': max_dep, 'noisy': noisy, 'intensity': intensity, 'rgb': rgb}
         labels = {'gt': gt}
 
         return features, labels

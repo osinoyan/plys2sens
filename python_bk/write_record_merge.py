@@ -1,22 +1,22 @@
 # read .dmp files and convert to multi-frame TFRecord
 # with gound-truth obtained by BundleFusion .dmp files
-# 2021.04.16
+# 2021.05.25
 import tensorflow as tf
 import argparse
 import numpy as np
+import random
 import os
 import cv2
 import time
-import random
 import struct
 from os import listdir
 from os.path import isfile, join
 
 parser = argparse.ArgumentParser(description='dmp reader')
-parser.add_argument('data', metavar='DIR',
-                    help='path to dmp')
+parser.add_argument('noisy', metavar='DIR',
+                    help='path to dmps')
 parser.add_argument('gt', metavar='DIR',
-                    help='path to GT dmp')
+                    help='path to GT dmps')
 # parser.add_argument("-f", '--flagMode',
 #                     help="The flag that select the runing mode, such as train, eval",
 #                     default='te', type=str)
@@ -34,9 +34,10 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def readDmp(file, depthShift):
+def readDmp(file, depthShift, n_frame_max):
     # input:  [string] file name
     # output: list of {( [array of np.array(int)] 2D depth map , [array of np.array([int, int, int])] ) 2D color map}
+    # n_frame_max: maximum n_frame
     f = open(file, 'rb')
 
     flag = f.read(10).decode('ascii')[:9]
@@ -52,6 +53,8 @@ def readDmp(file, depthShift):
         print('flag error.')
         exit(1)
 
+    if n_frame_max != -1:
+        n_frame = n_frame_max
 
     mapLen = width*height
     data = []
@@ -85,8 +88,8 @@ def write_tfRecord(
         header_gt=None,
         data=None,
         data_gt=None,
-        flag='train',
         items=None,
+        flag='train',
         label=None,
         file_name='test_yee.tfrecord'):
     """
@@ -101,44 +104,27 @@ def write_tfRecord(
     if n_frame_gt < n_frame:
         n_frame = n_frame_gt
 
-    # n_frame = 219
-
-    if flag == 'train':
-        frame_range = range(0, n_frame*9//10)
-    elif flag == 'eval':
-        frame_range = range(n_frame*9//10, n_frame)
-    else:
-        frame_range = range(n_frame)
+    # if flag == 'train':
+    #     frame_range = range(0, n_frame)
+    # elif flag == 'eval':
+    #     frame_range = range(n_frame-10, n_frame)
+    # else:
+    #     frame_range = range(n_frame)
 
     max_dep_np = np.zeros((1), dtype=np.float32)
     max_dep_np[0] = max_dep
-    
-    # eps is 0.1 cm
-    eps = 0.001 / max_dep
-    
     # Compress the frames using JPG and store in as a list of strings
     # in 'frames'
     # here suppose we have 10 data with same shape [50,100,3], but
     # label has different length, eg. OCR task.
     with tf.python_io.TFRecordWriter(file_name) as writer:
         for i in items:
-            if flag == 'eval':
-                print('[{}][{}/{}] ...'.format(flag, i, n_frame))
-            else:
-                print('[{}][{}/{}] ...'.format(flag, i, n_frame), end='\r')
+            print('[{}][{}/{}] ...'.format(flag, i, n_frame))
+            # prepare data and label
+            # noisy_data = np.ones((height, width, 3), dtype=np.float32)  # np.ndarray
             noisy_array, rgb_array_3 = data[i]
+
             gt_array, _ = data_gt[i]
-
-            ######################################################
-            #     PIXEL IN GT SET TO 0 IF THAT IN INPUT IS 0     #
-            ##################################################################
-            for ih in range(height):
-                for iw in range(width):
-                    dep = noisy_array[ih][iw]
-                    if dep < eps:
-                        gt_array[ih][iw] = 0
-            ##################################################################
-
             # label = list(np.arange(i+1))  # list of int
 
             features = {}  # each example has these features
@@ -158,18 +144,68 @@ def write_tfRecord(
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    header, data = readDmp(args.data, 1)
-    header_gt, data_gt = readDmp(args.gt, 1)
+
+    noisy_dir = args.noisy
+    noisy_files = [os.path.join(noisy_dir, f) for f in os.listdir(noisy_dir) if os.path.isfile(os.path.join(noisy_dir, f))]
+
+    gt_dir = args.gt
+    gt_files = [os.path.join(gt_dir, f) for f in os.listdir(gt_dir) if os.path.isfile(os.path.join(gt_dir, f))]
+
+    noisy_files.sort()
+    gt_files.sort()
+    paired_files = list(zip(noisy_files, gt_files))
+
+    print(noisy_files)
+    print(gt_files)
+    print(paired_files)
+    print('OK ?')
+    input()
+
+    header_noisy = (0, 0, 0)
+    data_noisy = []
+    header_gt = (0, 0, 0)
+    data_gt = []
+    max_dep_all = 0
+
+    for (noisy_file, gt_file) in paired_files:
+        # GT
+        header, data = readDmp(gt_file, 1, -1)
+        data_gt.extend(data)
+        n_frame, width, height, max_dep = header
+        
+        if max_dep > max_dep_all:
+            max_dep_all = max_dep
+        
+        header_gt = header_noisy = (header_noisy[0] + n_frame, width, height, max_dep_all)
+
+        # NOISY
+        header, data = readDmp(noisy_file, 1, n_frame)
+        _, _, _, max_dep = header
+
+        if max_dep > max_dep_all:
+            max_dep_all = max_dep
+        
+        header_gt = header_noisy = (header_noisy[0], width, height, max_dep_all)
+
+        data_noisy.extend(data)
+        
+        print(header_noisy)
+        print(len(data_noisy))
+        print(header_gt)
+        print(len(data_gt))
+        print('OK????')
+        # input()
 
     n_frame, _, _, _ = header_gt
+
     all_items = list(range(n_frame))
     eval_items = random.sample(all_items, n_frame // 10)
     train_items = [x for x in all_items if x not in eval_items]
 
     write_tfRecord(
-        header=header,
+        header=header_noisy,
         header_gt=header_gt,
-        data=data,
+        data=data_noisy,
         data_gt=data_gt,
         items=train_items,
         flag='train',
@@ -177,22 +213,21 @@ if __name__ == "__main__":
         file_name='../datasets/tfrecords/yee/yee_train.tfrecords'
     )
     write_tfRecord(
-        header=header,
+        header=header_noisy,
         header_gt=header_gt,
-        data=data,
+        data=data_noisy,
         data_gt=data_gt,
         items=eval_items,
         flag='eval',
         label=None,
         file_name='../datasets/tfrecords/yee/yee_eval.tfrecords'
     )
-    write_tfRecord(
-        header=header,
-        header_gt=header_gt,
-        data=data,
-        data_gt=data_gt,
-        items=all_items,
-        flag='all',
-        label=None,
-        file_name='../datasets/tfrecords/yee/yee_all.tfrecords'
-    )
+    # write_tfRecord(
+    #     header=header_noisy,
+    #     header_gt=header_gt,
+    #     data=data_noisy,
+    #     data_gt=data_gt,
+    #     flag='all',
+    #     label=None,
+    #     file_name='../datasets/tfrecords/yee/yee_all.tfrecords'
+    # )

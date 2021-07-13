@@ -134,5 +134,5 @@ if __name__ == "__main__":
         data_gt=data_gt,
         flag='eval',
         label=None,
-        file_name='../datasets/tfrecords/yee/yee_eval.tfrecords'
+        file_name='../datasets/tfrecords/yee/yee_all.tfrecords'
     )

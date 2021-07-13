@@ -17,4 +17,5 @@ out_sens
 yee_mean_l1_*
 dmp_gt*
 dmp_noisy*
+dmp_*
 pose_*

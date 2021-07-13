@@ -1,32 +1,12 @@
 #!/usr/bin/fish
 LC_TIME=en_US.utf8
 
-## TRAINING ---------------------------------------------
-if [ "$1" = "MERGE" ]
-then
-    python write_record_merge.py SensReader/dmp_noisy/ SensReader/dmp_gt
-elif [ "$1" = "GT" ]
-then
-    python write_record_gt.py SensReader/$2.dmp SensReader/$2.ply.GTA.dmp
-elif [ "$1" = "SKIP" ]
-then
-    echo "Skip TFRecord Writing."
-fi
-
 STIME=$(date)
 echo $STIME
-## ---- 50K
-python start.py --batchSize 2\
- --steps 300000 --modelName sample_pyramid_add_kpn\
-  --postfix size384 --lossMask depth_kinect_with_gt_msk\
-   --lr 0.10 --trainingSet yee --imageShape 350 450\
-    --lossType mean_l1 --addGradient sobel_gradient\
-     --gpuNumber 4\
-      --flagMode train
+python write_record_gt.py SensReader/$1.dmp SensReader/$1.ply.GTA.dmp
 
 echo $STIME
 date
-echo "lr = 0.10"
 
 
 

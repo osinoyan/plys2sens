@@ -507,8 +507,8 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
 
 
         norm_noisy = np.squeeze(result[i]['norm_noisy'])
-        print('output[{}/{}]\r'.format(i, len(result)))
-        print('\n')
+        # print('norm_noisy: {}'.format(norm_noisy))
+        print('output[{}/{}]'.format(i, len(result)), end="\r")
         
         pre_depth *= norm_noisy
         input_depth *= norm_noisy
@@ -517,7 +517,16 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
         # input_depth *= 4
 
         input_depth_png = input_depth * 100
-        output_depth_png = pre_depth * 100
+
+
+        # output_depth_png = pre_depth * 100
+        output_depth_png = (pre_depth - input_depth) * 100 + 5*norm_noisy
+
+        
+        # for ir, row in enumerate(output_depth_png):
+        #     for ic, col in enumerate(row):
+        #         if input_depth[ir][ic] == 0:
+        #             output_depth_png[ir][ic] = 0
 
         input_rgb = [[col[0] for col in row] for row in input_rgb]
 
@@ -540,6 +549,8 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
         pre_depth.tofile(pre_depth_path)
         input_depth.tofile(depth_input_path)
         input_rgb.tofile(rgb_input_path)
+    
+    print('\n')
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script for training of a Deformable KPN Network')
@@ -607,7 +618,6 @@ if __name__ == '__main__':
     print('train_data_path: {}'.format(train_data_path))
     print('evaluate_data_path: {}'.format(evaluate_data_path))
     # print('all_data_path: {}'.format(all_data_path))
-    time.sleep(5)
     print('OK?')
     # input()
 
@@ -632,8 +642,8 @@ if __name__ == '__main__':
                         loss_mask=args.lossMask, gpu_Number=args.gpuNumber, training_set=args.trainingSet,
                         image_shape=args.imageShape,
                         add_gradient=args.addGradient)
-    elif args.flagMode == 'test':
-        dataset_output(result_path=output_dir,evaluate_data_path=train_data_path, model_dir=model_dir, loss_fn=args.lossType,
+    elif args.flagMode == 'test_EVAL':
+        dataset_output(result_path=output_dir,evaluate_data_path=evaluate_data_path, model_dir=model_dir, loss_fn=args.lossType,
                         batch_size=args.batchSize, checkpoint_steps=args.checkpointSteps, deformable_range = args.deformableRange,
                         model_name = args.modelName, loss_mask = args.lossMask, gpu_Number = args.gpuNumber, training_set = args.trainingSet,
                         image_shape = args.imageShape)

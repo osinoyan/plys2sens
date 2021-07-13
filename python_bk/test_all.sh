@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# if [ "$1" = "NOMAXDEP" ]
+# then
+#     cp dataset_no_max_dep.py dataset.py
+# elif [ "$1" = "MAXDEP" ]
+# then
+#     cp dataset_max_dep.py dataset.py
+# fi
 
 python start.py -b 2\
  --modelName sample_pyramid_add_kpn\

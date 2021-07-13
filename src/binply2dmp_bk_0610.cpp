@@ -5,9 +5,6 @@
 //   WHICH IS A NEW FORMAT FOR STORING 2D DEPTH MAP.                   //
 //   USING FACES IN [.PLY] TO PRODUCE DEPTH MAPS WITH HIGHER ACCURACY  //
 /////////////////////////////////////////////////////////////////////////
-// ---------------- MODIFIED AT 2021/06/10 BY LYWANG ----------------- //
-// ----------------------- OPTIMIZED VERSION ------------------------- //
-/////////////////////////////////////////////////////////////////////////
 
 #include <omp.h>
 #include "sensorData.h"
@@ -16,7 +13,6 @@
 #include <vector>
 #include <limits>
 #include <cstring>
-#include <math.h>
 #define PAUSE printf("Press Enter key to continue..."); fgetc(stdin);  
 
 using namespace std;
@@ -569,49 +565,42 @@ void convertAndWriteRDFrame(ofstream &out, vector<CloudPoint> &points, vector<ve
 	memset(colorMap, 0, sizeof(uint8_t)*width*height);
 	memset(depthMap, 0, sizeof(float)*width*height);
 	
-	
-	double gr = 2; // grid radius 
-	// FIND POINTS NEAR THE CENTER OF EACH EACH PIXEL
-	vector<int> *neighborPointIds = new vector<int>[width*height];
-	for (int i=0; i<projectedPoints.size(); i++){
-		CloudPoint p = projectedPoints[i];
-		// which pixels are the neighbors of this point
-		int lower_x = floor(p.x - gr);
-		int upper_x = ceil(p.x + gr);
-		int lower_y = floor(p.y - gr);
-		int upper_y = ceil(p.y + gr);
-		for (int ix=lower_x; ix<=upper_x; ix++){
-			for (int iy=lower_y; iy<=upper_y; iy++){
-				if (ix < 0 || ix >= width || iy < 0 || iy >= height) continue;
-				neighborPointIds[iy*width + ix].push_back(i);
-			}
-		}
-	}
-
-	#pragma omp parallel for
-	for (int ih=0; ih<height; ih++){ // h=350
-		for (int iw=0; iw<width; iw++){ // w=450
-			// printf("[%d][%d]\n", ih, iw);
+	// #pragma omp parallel for
+	for (int iw=0; iw<width; iw++){ // w=450
+		for (int ih=0; ih<height; ih++){ // h=350
+			printf("[%d][%d]\n", iw, ih);
 			CloudPoint nearestPoint = CloudPoint();
+			double gr = 8; // grid radius !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+			// double MXSqrDist = gr*gr*2 + 1; // out of a grid
+			double MXSqrDist = 5; // out of a smaller circle
+			double curSqrDist = MXSqrDist;
 			
-			vector<int> candiPointIds = neighborPointIds[ih*width + iw];
+			///////////////////////////////////////////////////////////////////////////
+			// find the points lies in grid
+			// if there are less then 4 points, enlarge the grid
 			vector<int> candiFaces;
 			candiFaces.empty();
 			int n_candiPoint = 0;
-
-			double MXSqrDist = 9;
-			double curSqrDist = MXSqrDist;
-
-			// neighor points of this pixel
-			for (auto& pointId : candiPointIds){
-				// all faces include this point is taken into account
-				for (auto& faceId : face_points[pointId]){
-					candiFaces.push_back(faceId);
+			// cout << "[gr = " << gr << "]\n";
+			for (int i=0; i<projectedPoints.size(); i++){
+				CloudPoint p = projectedPoints[i];
+				// whether the point in gr x gr grid
+				if (p.x > iw - gr && p.x < iw + gr &&
+					p.y > ih - gr && p.y < ih + gr){
+					n_candiPoint++;
+					for (auto& faceId : face_points[i]){
+						candiFaces.push_back(faceId);
+					}
 				}
 			}
-
+			// cout << candiFaces.size() << " ===> ";
 			std::sort(candiFaces.begin(), candiFaces.end());
 			candiFaces.erase(std::unique(candiFaces.begin(), candiFaces.end()), candiFaces.end());
+			// cout << candiFaces.size() << "\n";
+			// for (auto& f : candiFaces){
+			// 	cout << f << " ";
+			// }
+			// cout << "\n";
 			
 			///////////////////////////////////////////////////////////////////////////
 			// check if the center of grid lies in any faces(triangles) in candiFaces
@@ -624,39 +613,35 @@ void convertAndWriteRDFrame(ofstream &out, vector<CloudPoint> &points, vector<ve
 				CloudPoint v0 = projectedPoints[v0_id];
 				CloudPoint v1 = projectedPoints[v1_id];
 				CloudPoint v2 = projectedPoints[v2_id];
-				// cout << "FACE["<<faceId<<"]\n";
-				// cout << "("<<v0.x<<", "<<v0.y<<")\n";
-				// cout << "("<<v1.x<<", "<<v1.y<<")\n";
-				// cout << "("<<v2.x<<", "<<v2.y<<")\n";
-				// PAUSE
 				// Find intersection
 				if (pointInTriangle(grid_center, v0, v1, v2)){
 					double d = interpolateDepth(grid_center, v0, v1, v2);
 					if (d < minD){
-						// // try to find the smallest depth value
-						// cout << "------------------[find depth]------------------\n";
-						// cout << "("<<v0.x<<", "<<v0.y<<", "<<v0.z<<")\n";
-						// cout << "("<<v1.x<<", "<<v1.y<<", "<<v1.z<<")\n";
-						// cout << "("<<v2.x<<", "<<v2.y<<", "<<v2.z<<")\n";
-						// cout << "------D=("<<iw<<", "<<ih<<", "<<d<<")-----------\n";
-						// PAUSE
+						// try to find the smallest depth value
+						if (minD != 1000){
+							cout << "[find depth]\n";
+							cout << "("<<v0.x<<", "<<v0.y<<", "<<v0.z<<")\n";
+							cout << "("<<v1.x<<", "<<v1.y<<", "<<v1.z<<")\n";
+							cout << "("<<v2.x<<", "<<v2.y<<", "<<v2.z<<")\n";
+							cout << "D=("<<iw<<", "<<ih<<", "<<d<<")\n";
+							// PAUSE
+						}
 						minD = d;
 					}
 				}
-				
 				// Nearest neighbor point (for RGB data)
-				for (auto& pId : faces[faceId]){
-					CloudPoint p = projectedPoints[pId];
-					if (p.x > iw - gr && p.x < iw + gr &&
-						p.y > ih - gr && p.y < ih + gr){
-						double sqrDistToCenter = (p.x-iw)*(p.x-iw) + (p.y-ih)*(p.y-ih);
-						if (sqrDistToCenter < curSqrDist){
-							// try to find the nearest point to the pixel center
-							curSqrDist = sqrDistToCenter;
-							nearestPoint = p;
-						}
-					}
-				}
+				// for (auto& pId : faces[faceId]){
+				// 	CloudPoint p = projectedPoints[pId];
+				// 	if (p.x > iw - gr && p.x < iw + gr &&
+				// 		p.y > ih - gr && p.y < ih + gr){
+				// 		double sqrDistToCenter = (p.x-iw)*(p.x-iw) + (p.y-ih)*(p.y-ih);
+				// 		if (sqrDistToCenter < curSqrDist){
+				// 			// try to find the nearest point to the pixel center
+				// 			curSqrDist = sqrDistToCenter;
+				// 			nearestPoint = p;
+				// 		}
+				// 	}
+				// }
 			}
 
 			if (minD == 1000 && curSqrDist != MXSqrDist){
@@ -676,7 +661,7 @@ void convertAndWriteRDFrame(ofstream &out, vector<CloudPoint> &points, vector<ve
 				depthMap[ih*width + iw] = w_depth;
 
 			} else if (minD == 1000 && curSqrDist == MXSqrDist){
-				// point NOT found
+				// point STILL not found
 				// first color R [uint8] and then D [float32]
 				uint8_t w_red = 0;
 				float w_depth = 0; // GIVE ZERO WITHOUT MAX
@@ -702,7 +687,7 @@ void convertAndWriteRDFrame(ofstream &out, vector<CloudPoint> &points, vector<ve
 				// cout << "red: " << (int)w_red << "\n";
 				// cout << "depth: " << w_depth << "\n";
 			}
-			// PAUSE
+			PAUSE
 		}
 	}
 
