@@ -6,6 +6,7 @@
 # all time unit are picoseconds (1 picosec = 1e-12 sec)
 import sys
 import os
+import shutil
 import time
 # os.environ["CUDA_VISIBLE_DEVICES"]="0"
 sys.path.insert(0, '../sim/')
@@ -479,79 +480,219 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
     root_dir = result_path
     pre_depth_dir = os.path.join(root_dir, 'pre_depth')
     depth_input_dir = os.path.join(root_dir, 'depth_input')
-    rgb_input_dir = os.path.join(root_dir, 'rgb_input')
+    # rgb_input_dir = os.path.join(root_dir, 'rgb_input')
     depth_input_png_dir = os.path.join(root_dir, 'depth_input_png')
     depth_output_png_dir = os.path.join(root_dir, 'depth_output_png')
+    
+    # if os.path.exists(pre_depth_dir):
+    #     shutil.rmtree(pre_depth_dir)
+    #     print('[{}] removed.'.format(pre_depth_dir))
     if not os.path.exists(pre_depth_dir):
         os.mkdir(pre_depth_dir)
+    
+    # if os.path.exists(depth_input_dir):
+    #     shutil.rmtree(depth_input_dir)
+    #     print('[{}] removed.'.format(depth_input_dir))
     if not os.path.exists(depth_input_dir):
         os.mkdir(depth_input_dir)
-    if not os.path.exists(rgb_input_dir):
-        os.mkdir(rgb_input_dir)
+
+    # if os.path.exists(rgb_input_dir):
+    #     shutil.rmtree(rgb_input_dir)
+    #     print('[{}] removed.'.format(rgb_input_dir))
+    # os.mkdir(rgb_input_dir)
+
+    # if os.path.exists(depth_input_png_dir):
+    #     shutil.rmtree(depth_input_png_dir)
+    #     print('[{}] removed.'.format(depth_input_png_dir))
     if not os.path.exists(depth_input_png_dir):
         os.mkdir(depth_input_png_dir)
+
+    # if os.path.exists(depth_output_png_dir):
+    #     shutil.rmtree(depth_output_png_dir)
+    #     print('[{}] removed.'.format(depth_output_png_dir))
     if not os.path.exists(depth_output_png_dir):
         os.mkdir(depth_output_png_dir)
 
-    for i in range(len(result)):
+    selectedResult = [0, 72]
+
+    for i in selectedResult:
         pre_depth_path = os.path.join(pre_depth_dir, '{:05d}'.format(i))
         depth_input_path = os.path.join(depth_input_dir, '{:05d}'.format(i))
-        rgb_input_path = os.path.join(rgb_input_dir, '{:05d}'.format(i))
+        # rgb_input_path = os.path.join(rgb_input_dir, '{:05d}'.format(i))
         
         depth_input_png_path = os.path.join(depth_input_png_dir, '{:05d}.png'.format(i))
         depth_output_png_path = os.path.join(depth_output_png_dir, '{:05d}.png'.format(i))
         
         pre_depth = np.squeeze(result[i]['depth'])
         input_depth = np.squeeze(result[i]['depth_input'])
-        input_rgb = np.squeeze(result[i]['rgb_input'])
-
+        # input_rgb = np.squeeze(result[i]['rgb_input'])
 
         norm_noisy = np.squeeze(result[i]['norm_noisy'])
-        # print('norm_noisy: {}'.format(norm_noisy))
         print('output[{}/{}]'.format(i, len(result)), end="\r")
         
         pre_depth *= norm_noisy
         input_depth *= norm_noisy
 
-        # pre_depth *= 4
-        # input_depth *= 4
+        #################################################################
+        # flag = 'gt'               # features['noisy'] = gt_p
+        # flag = 'gt_error'         # features['noisy'] = gt_p - noisy_p
+        flag = 'refined'          # features['noisy'] = noisy_p
+        # flag = 'refined_error'    # features['noisy'] = noisy_p
+        #################################################################
 
-        input_depth_png = input_depth * 100
+        ############## OUTPUT CONFIGS #############################
+        dshift = 100
+        height = 350
+        width = 450
+        # only used in error output
+        mxd = 50 * 0.001 * dshift   # dep = 50mm ~ -50mm
+        gradR = [255, 255, 0]
+        gradG = [0, 255, 0]
+        gradB = [0, 255, 255]
+        ###########################################################
 
+        if flag == 'gt':
+            # ONLY INPUT DEPTH PNG ----------------------
+            input_depth_png = input_depth * dshift
+            input_depth_list = []
+            # crop center [450 x 350]
+            for ir in range(17, height+17):
+                for ic in range(31, width+31):
+                    input_depth_list.append(input_depth_png[ir][ic])
+            input_depth_png = np.reshape(input_depth_list, (height, width))
+          
+            input_depth_png = Image.fromarray(input_depth_png)
+            input_depth_png = input_depth_png.convert("L")
+            input_depth_png.save(depth_input_png_path)
 
-        # output_depth_png = pre_depth * 100
-        output_depth_png = (pre_depth - input_depth) * 100 + 5*norm_noisy
+        elif flag == 'gt_error':
+            # ONLY INPUT DEPTH PNG ----------------------
+            input_depth_png = input_depth * dshift
+            input_depth_list = []
+            # crop center [450 x 350]
+            for ir in range(17, height+17):
+                for ic in range(31, width+31):
+                    d = input_depth_png[ir][ic]
+                    # print('[{}][{}]: {}'.format(ir, ic, d))
+                    # input()
+                    if d > mxd: # > mxd
+                        r = gradR[0]
+                        g = gradG[0]
+                        b = gradB[0]
+                    elif d > 0: # 0 ~ mxd
+                        r = gradR[1] + (gradR[0]-gradR[1]) * d / mxd
+                        g = gradG[1] + (gradG[0]-gradG[1]) * d / mxd
+                        b = gradB[1] + (gradB[0]-gradB[1]) * d / mxd
+                    elif d == 0: # 0
+                        r = gradR[1]
+                        g = gradG[1]
+                        b = gradB[1]
+                    elif d >= -mxd: # -mxd ~ 0
+                        r = gradR[1] - (gradR[2]-gradR[1]) * d / mxd
+                        g = gradG[1] - (gradG[2]-gradG[1]) * d / mxd
+                        b = gradB[1] - (gradB[2]-gradB[1]) * d / mxd
+                    else: # < -mxd
+                        r = gradR[2]
+                        g = gradG[2]
+                        b = gradB[2]
+                    input_depth_list.append(r)
+                    input_depth_list.append(g)
+                    input_depth_list.append(b)
+                    # print('[{}][{}]: {}, {}, {}'.format(ir, ic, r, g, b))
+                    # input()
+            input_depth_png = np.reshape(input_depth_list, (height, width, 3))
 
-        
-        # for ir, row in enumerate(output_depth_png):
-        #     for ic, col in enumerate(row):
-        #         if input_depth[ir][ic] == 0:
-        #             output_depth_png[ir][ic] = 0
+            input_depth_png = Image.fromarray(input_depth_png.astype(np.uint8))
+            input_depth_png = input_depth_png.convert("RGB")
+            input_depth_png.save(depth_input_png_path)
+            
+        elif flag == 'refined':
+            input_depth_png = input_depth * dshift
+            output_depth_png = pre_depth * dshift
+            input_depth_list = []
+            output_depth_list = []
+            # crop center [450 x 350]
+            for ir in range(17, height+17):
+                for ic in range(31, width+31):
+                    input_depth_list.append(input_depth_png[ir][ic])
+                    output_depth_list.append(output_depth_png[ir][ic])
+            input_depth_png = np.reshape(input_depth_list, (height, width))
+            output_depth_png = np.reshape(output_depth_list, (height, width))
+          
+            input_depth_png = Image.fromarray(input_depth_png)
+            input_depth_png = input_depth_png.convert("L")
+            input_depth_png.save(depth_input_png_path)
 
-        input_rgb = [[col[0] for col in row] for row in input_rgb]
+            output_depth_png = Image.fromarray(output_depth_png)
+            output_depth_png = output_depth_png.convert("L")
+            output_depth_png.save(depth_output_png_path)
 
-        pre_depth = np.reshape(pre_depth, -1).astype(np.float32)
-        input_depth = np.reshape(input_depth, -1).astype(np.float32)
-        input_rgb = np.reshape(input_rgb, -1).astype(np.float32)
-        
-        # print(len(input_rgb))
-        # print(input_rgb[76800: 77312])
-        # input()
+        elif flag == 'refined_error':
+            input_depth_png = input_depth * dshift
+            output_depth_png = (pre_depth - input_depth) * dshift
+            input_depth_list = []
+            output_depth_list = []
+            # crop center [450 x 350]
+            for ir in range(17, height+17):
+                for ic in range(31, width+31):
+                    d = output_depth_png[ir][ic]
+                    if d > mxd: # > mxd
+                        r = gradR[0]
+                        g = gradG[0]
+                        b = gradB[0]
+                    elif d > 0: # 0 ~ mxd
+                        r = gradR[1] + (gradR[0]-gradR[1]) * d / mxd
+                        g = gradG[1] + (gradG[0]-gradG[1]) * d / mxd
+                        b = gradB[1] + (gradB[0]-gradB[1]) * d / mxd
+                    elif d == 0: # 0
+                        r = gradR[1]
+                        g = gradG[1]
+                        b = gradB[1]
+                    elif d >= -mxd: # -mxd ~ 0
+                        r = gradR[1] - (gradR[2]-gradR[1]) * d / mxd
+                        g = gradG[1] - (gradG[2]-gradG[1]) * d / mxd
+                        b = gradB[1] - (gradB[2]-gradB[1]) * d / mxd
+                    else: # < 0
+                        r = gradR[2]
+                        g = gradG[2]
+                        b = gradB[2]
+                    output_depth_list.append(r)
+                    output_depth_list.append(g)
+                    output_depth_list.append(b)
+                    input_depth_list.append(input_depth_png[ir][ic])
+            input_depth_png = np.reshape(input_depth_list, (height, width))
+            output_depth_png = np.reshape(output_depth_list, (height, width, 3))
 
-        input_depth_png = Image.fromarray(input_depth_png)
-        input_depth_png = input_depth_png.convert("L")
-        input_depth_png.save(depth_input_png_path)
+            input_depth_png = Image.fromarray(input_depth_png)
+            input_depth_png = input_depth_png.convert("L")
+            input_depth_png.save(depth_input_png_path)
 
-        output_depth_png = Image.fromarray(output_depth_png)
-        output_depth_png = output_depth_png.convert("L")
-        output_depth_png.save(depth_output_png_path)
+            output_depth_png = Image.fromarray(output_depth_png.astype(np.uint8))
+            output_depth_png = output_depth_png.convert("RGB")
+            output_depth_png.save(depth_output_png_path)
 
-        pre_depth.tofile(pre_depth_path)
-        input_depth.tofile(depth_input_path)
-        input_rgb.tofile(rgb_input_path)
+        # pre_depth.tofile(pre_depth_path)
+        # input_depth.tofile(depth_input_path)
+        # input_rgb.tofile(rgb_input_path)
     
     print('\n')
-
+    
+    depth_output_png_path = os.path.join(depth_output_png_dir, '_measure_gray.png')
+    output_depth_list = []
+    height = 350
+    width = 100
+    mxd = 5 * dshift  # 0m ~ 2m
+    for ir in range(350):
+        gray = mxd * ir/350
+        if gray > 255:
+            gray = 255
+        for ic in range(100):
+            output_depth_list.append(gray)
+    output_depth_png = np.reshape(output_depth_list, (height, width))
+    output_depth_png = Image.fromarray(output_depth_png)
+    output_depth_png = output_depth_png.convert("L")
+    output_depth_png.save(depth_output_png_path)
+    
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Script for training of a Deformable KPN Network')
     parser.add_argument("-t", "--trainingSet", help='the name to the list file with training set', default = 'FLAT_reflection_s5', type=str)
