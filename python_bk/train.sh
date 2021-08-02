@@ -1,6 +1,7 @@
 #!/usr/bin/fish
 LC_TIME=en_US.utf8
 
+STEP=300000
 ## TRAINING ---------------------------------------------
 if [ "$1" = "MERGE" ]
 then
@@ -11,22 +12,26 @@ then
 elif [ "$1" = "SKIP" ]
 then
     echo "Skip TFRecord Writing."
+else
+    STEP=$1
 fi
 
+LR=0.04
 STIME=$(date)
 echo $STIME
 ## ---- 50K
 python start.py --batchSize 2\
- --steps 300000 --modelName sample_pyramid_add_kpn\
+ --steps $STEP --modelName sample_pyramid_add_kpn\
   --postfix size384 --lossMask depth_kinect_with_gt_msk\
-   --lr 0.10 --trainingSet yee --imageShape 350 450\
+   --lr $LR --trainingSet yee --imageShape 350 450\
     --lossType mean_l1 --addGradient sobel_gradient\
      --gpuNumber 4\
+      --evalSteps 57\
       --flagMode train
 
 echo $STIME
 date
-echo "lr = 0.10"
+echo "lr = $LR"
 
 
 

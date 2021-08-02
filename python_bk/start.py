@@ -23,6 +23,38 @@ from metric import *
 
 tof_cam = kinect_real_tf()
 
+def colored(d):
+    mxd = 0.05   # 5cm
+    gradR = [255, 255, 0]
+    gradG = [0, 255, 0]
+    gradB = [0, 255, 255]
+    
+    if d > mxd: # > mxd
+        r = gradR[0]
+        g = gradG[0]
+        b = gradB[0]
+    elif d > 0: # 0 ~ mxd
+        r = gradR[1] + (gradR[0]-gradR[1]) * d / mxd
+        g = gradG[1] + (gradG[0]-gradG[1]) * d / mxd
+        b = gradB[1] + (gradB[0]-gradB[1]) * d / mxd
+    elif d == 0: # 0
+        r = gradR[1]
+        g = gradG[1]
+        b = gradB[1]
+    elif d >= -mxd: # -mxd ~ 0
+        r = gradR[1] - (gradR[2]-gradR[1]) * d / mxd
+        g = gradG[1] - (gradG[2]-gradG[1]) * d / mxd
+        b = gradB[1] - (gradB[2]-gradB[1]) * d / mxd
+    else: # < -mxd
+        r = gradR[2]
+        g = gradG[2]
+        b = gradB[2]
+    
+    r = int(np.round(r, 0))
+    g = int(np.round(g, 0))
+    b = int(np.round(b, 0))
+    return r, g, b
+
 def tof_net_func(features, labels, mode, params):
     """
     This is the network function of tensorflow estimator API
@@ -480,7 +512,7 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
     root_dir = result_path
     pre_depth_dir = os.path.join(root_dir, 'pre_depth')
     depth_input_dir = os.path.join(root_dir, 'depth_input')
-    # rgb_input_dir = os.path.join(root_dir, 'rgb_input')
+    rgb_input_dir = os.path.join(root_dir, 'rgb_input')
     depth_input_png_dir = os.path.join(root_dir, 'depth_input_png')
     depth_output_png_dir = os.path.join(root_dir, 'depth_output_png')
     
@@ -496,10 +528,8 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
     if not os.path.exists(depth_input_dir):
         os.mkdir(depth_input_dir)
 
-    # if os.path.exists(rgb_input_dir):
-    #     shutil.rmtree(rgb_input_dir)
-    #     print('[{}] removed.'.format(rgb_input_dir))
-    # os.mkdir(rgb_input_dir)
+    if not os.path.exists(rgb_input_dir):
+        os.mkdir(rgb_input_dir)
 
     # if os.path.exists(depth_input_png_dir):
     #     shutil.rmtree(depth_input_png_dir)
@@ -513,19 +543,23 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
     if not os.path.exists(depth_output_png_dir):
         os.mkdir(depth_output_png_dir)
 
-    selectedResult = [0, 72]
+    # selectedResult = [0]
+    # selectedResult = range(315, 350)
+    # selectedResult = [4]
+    selectedResult = range(len(result))
 
     for i in selectedResult:
         pre_depth_path = os.path.join(pre_depth_dir, '{:05d}'.format(i))
         depth_input_path = os.path.join(depth_input_dir, '{:05d}'.format(i))
-        # rgb_input_path = os.path.join(rgb_input_dir, '{:05d}'.format(i))
+
+        rgb_input_path = os.path.join(rgb_input_dir, '{:05d}.png'.format(i))
         
         depth_input_png_path = os.path.join(depth_input_png_dir, '{:05d}.png'.format(i))
         depth_output_png_path = os.path.join(depth_output_png_dir, '{:05d}.png'.format(i))
         
         pre_depth = np.squeeze(result[i]['depth'])
         input_depth = np.squeeze(result[i]['depth_input'])
-        # input_rgb = np.squeeze(result[i]['rgb_input'])
+        input_rgb = np.squeeze(result[i]['rgb_input'])
 
         norm_noisy = np.squeeze(result[i]['norm_noisy'])
         print('output[{}/{}]'.format(i, len(result)), end="\r")
@@ -611,13 +645,21 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
             output_depth_png = pre_depth * dshift
             input_depth_list = []
             output_depth_list = []
+            pre_depth_list = []
+
+            rgb_list = []
             # crop center [450 x 350]
             for ir in range(17, height+17):
                 for ic in range(31, width+31):
                     input_depth_list.append(input_depth_png[ir][ic])
                     output_depth_list.append(output_depth_png[ir][ic])
+                    pre_depth_list.append(pre_depth[ir][ic])
+                    rgb_list.append(input_rgb[ir][ic][0]*255)
+            
             input_depth_png = np.reshape(input_depth_list, (height, width))
             output_depth_png = np.reshape(output_depth_list, (height, width))
+            pre_depth = np.reshape(pre_depth_list, (height, width))
+            rgb_png = np.reshape(rgb_list, (height, width))
           
             input_depth_png = Image.fromarray(input_depth_png)
             input_depth_png = input_depth_png.convert("L")
@@ -626,6 +668,12 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
             output_depth_png = Image.fromarray(output_depth_png)
             output_depth_png = output_depth_png.convert("L")
             output_depth_png.save(depth_output_png_path)
+            
+            rgb_png = Image.fromarray(rgb_png)
+            rgb_png = rgb_png.convert("L")
+            rgb_png.save(rgb_input_path)
+            
+            # pre_depth.tofile(pre_depth_path)
 
         elif flag == 'refined_error':
             input_depth_png = input_depth * dshift

@@ -7,8 +7,10 @@ main:
 	# $(CXX) $(FLAGS) -o sens src/main.cpp
 	# $(CXX) $(FLAGS) -o sens_mp src/sens_MP.cpp
 	# $(CXX) $(FLAGS) -o conver2dmp src/conver2dmp.cpp
-	$(CXX) $(FLAGS) -o binply2dmp src/binply2dmp.cpp
+	# $(CXX) $(FLAGS) -o binply2dmp src/binply2dmp.cpp
 	# $(CXX) $(FLAGS) -o out_sens src/out_sens.cpp
+	# $(CXX) $(FLAGS) -o readrs src/readrs.cpp
+	$(CXX) $(FLAGS) -o rs src/binply2dmpRS.cpp
 mp:
 	$(CXX) $(FLAGS) -o mptest src/openmp_test.cpp
 

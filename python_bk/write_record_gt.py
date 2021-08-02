@@ -113,8 +113,8 @@ def write_tfRecord(
     max_dep_np = np.zeros((1), dtype=np.float32)
     max_dep_np[0] = max_dep
     
-    # eps is 0.1 cm
-    eps = 0.001 / max_dep
+    # eps is 0.001 cm
+    eps = 0.00001
     
     # Compress the frames using JPG and store in as a list of strings
     # in 'frames'
@@ -135,8 +135,26 @@ def write_tfRecord(
             for ih in range(height):
                 for iw in range(width):
                     dep = noisy_array[ih][iw]
+                    dep_g = gt_array[ih][iw]
+                    if dep > 4.0:
+                        gt_array[ih][iw] = dep
+                    if dep_g < eps:
+                        gt_array[ih][iw] = dep
                     if dep < eps:
                         gt_array[ih][iw] = 0
+                    else:
+                        error = dep_g - dep
+                        # max error is 5cm 
+                        if (error > 0.05):
+                            gt_array[ih][iw] = dep + 0.05
+                            # print(dep)
+                            # print(dep_g)
+                            # input()
+                        if (error < -0.05):
+                            # print(dep)
+                            # print(dep_g)
+                            # input()
+                            gt_array[ih][iw] = dep - 0.05
             ##################################################################
 
             # label = list(np.arange(i+1))  # list of int
@@ -165,6 +183,12 @@ if __name__ == "__main__":
     all_items = list(range(n_frame))
     eval_items = random.sample(all_items, n_frame // 10)
     train_items = [x for x in all_items if x not in eval_items]
+    
+    # train_items = list(range(162, 200))
+    # train_items = list(range(315, 350))
+    # train_items = list(range(300, 420))
+    # eval_items = train_items
+    
 
     write_tfRecord(
         header=header,
@@ -186,13 +210,13 @@ if __name__ == "__main__":
         label=None,
         file_name='../datasets/tfrecords/yee/yee_eval.tfrecords'
     )
-    write_tfRecord(
-        header=header,
-        header_gt=header_gt,
-        data=data,
-        data_gt=data_gt,
-        items=all_items,
-        flag='all',
-        label=None,
-        file_name='../datasets/tfrecords/yee/yee_all.tfrecords'
-    )
+    # write_tfRecord(
+    #     header=header,
+    #     header_gt=header_gt,
+    #     data=data,
+    #     data_gt=data_gt,
+    #     items=all_items,
+    #     flag='all',
+    #     label=None,
+    #     file_name='../datasets/tfrecords/yee/yee_all.tfrecords'
+    # )

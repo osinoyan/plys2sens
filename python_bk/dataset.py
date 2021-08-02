@@ -175,8 +175,11 @@ def preprocessing_yee(features, labels):
     # norm_noisy = tf.norm(noisy_p)/100
     # norm_noisy = 4.0
     norm_noisy = max_dep
+    # norm_noisy = 1.0
     noisy_p /= norm_noisy
     gt_p /= norm_noisy
+
+
 
     features['norm_noisy'] = norm_noisy
 
@@ -187,7 +190,7 @@ def preprocessing_yee(features, labels):
     features['rgb'] = rgb_p
     features['intensity'] = intensity_p
 
-    # features['noisy'] = gt_p - noisy_p + 0.05
+    # features['noisy'] = gt_p - noisy_p
     # features['noisy'] = gt_p
     features['noisy'] = noisy_p
     
