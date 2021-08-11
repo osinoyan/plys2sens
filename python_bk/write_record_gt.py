@@ -1,6 +1,7 @@
 # read .dmp files and convert to multi-frame TFRecord
 # with gound-truth obtained by BundleFusion .dmp files
 # 2021.04.16
+from io import IncrementalNewlineDecoder
 import tensorflow as tf
 import argparse
 import numpy as np
@@ -34,7 +35,7 @@ def _bytes_feature(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def readDmp(file, depthShift):
+def readDmp(file, depthShift, needs):
     # input:  [string] file name
     # output: list of {( [array of np.array(int)] 2D depth map , [array of np.array([int, int, int])] ) 2D color map}
     f = open(file, 'rb')
@@ -57,9 +58,13 @@ def readDmp(file, depthShift):
     data = []
     max_dep = 0
     for frame in range(n_frame):
-        print('processing frame [{:03d}] ...'.format(frame), end="\r")
         depthMap = struct.unpack('f'*mapLen, f.read(4*mapLen))
         colorMap = struct.unpack('B'*mapLen, f.read(mapLen))
+
+        if frame not in needs:
+            continue
+
+        print('processing frame [{:03d}] ...'.format(frame), end="\r")
 
         dep_array = np.zeros((height, width, 1), dtype=np.float32)
         rgb_array = np.zeros((height, width, 3), dtype=np.float32)
@@ -132,29 +137,62 @@ def write_tfRecord(
             ######################################################
             #     PIXEL IN GT SET TO 0 IF THAT IN INPUT IS 0     #
             ##################################################################
+            outlier_count = 0
+            threshold = 0.01
+            threshold = 350*450*threshold
+            error_filter = 0.50  # 50cm
             for ih in range(height):
                 for iw in range(width):
                     dep = noisy_array[ih][iw]
                     dep_g = gt_array[ih][iw]
+                    ########################################
+                    # if dep > 4.0:
+                    #     gt_array[ih][iw] = dep
+                    # if dep_g < eps:
+                    #     gt_array[ih][iw] = dep
+                    # if dep < eps:
+                    #     gt_array[ih][iw] = 0
+                    # else:
+                    #     error = dep_g - dep
+                    #     # max error is 5cm 
+                    #     if (error > 0.05):
+                    #         gt_array[ih][iw] = dep + 0.05
+                    #         # print(dep)
+                    #         # print(dep_g)
+                    #         # input()
+                    #     if (error < -0.05):
+                    #         # print(dep)
+                    #         # print(dep_g)
+                    #         # input()
+                    #         gt_array[ih][iw] = dep - 0.05
+                    ##########################################
+                    if outlier_count > threshold:
+                        break
                     if dep > 4.0:
                         gt_array[ih][iw] = dep
+                        outlier_count += 1
                     if dep_g < eps:
                         gt_array[ih][iw] = dep
-                    if dep < eps:
-                        gt_array[ih][iw] = 0
-                    else:
+                        outlier_count += 1
+                    # if dep < eps:
+                    #     gt_array[ih][iw] = 0
+                    if dep >= eps:
+                        # dep_g += 0.01
                         error = dep_g - dep
-                        # max error is 5cm 
-                        if (error > 0.05):
-                            gt_array[ih][iw] = dep + 0.05
-                            # print(dep)
-                            # print(dep_g)
-                            # input()
-                        if (error < -0.05):
-                            # print(dep)
-                            # print(dep_g)
-                            # input()
-                            gt_array[ih][iw] = dep - 0.05
+                        error *= 2.0
+                        # max error
+                        if (error > error_filter):
+                            gt_array[ih][iw] = dep + error_filter
+                        if (error < -error_filter):
+                            gt_array[ih][iw] = dep - error_filter
+                        else:
+                            gt_array[ih][iw] = dep + error
+            if outlier_count > threshold:
+                print('\n------ DROP FRAME [{}] ...'.format(i))
+                continue
+
+
+
             ##################################################################
 
             # label = list(np.arange(i+1))  # list of int
@@ -175,21 +213,24 @@ def write_tfRecord(
 
 
 if __name__ == "__main__":
+    need_items = list(range(0, 5000))
+    # print(need_items[0], need_items[-1])
+
     args = parser.parse_args()
-    header, data = readDmp(args.data, 1)
-    header_gt, data_gt = readDmp(args.gt, 1)
+    header, data = readDmp(args.data, 1, need_items)
+    header_gt, data_gt = readDmp(args.gt, 1, need_items)
 
     n_frame, _, _, _ = header_gt
     all_items = list(range(n_frame))
     eval_items = random.sample(all_items, n_frame // 10)
     train_items = [x for x in all_items if x not in eval_items]
     
-    # train_items = list(range(162, 200))
-    # train_items = list(range(315, 350))
-    # train_items = list(range(300, 420))
-    # eval_items = train_items
-    
+    # train_items = all_items
 
+
+    # train_items = range(len(need_items))
+    # eval_items = range(len(need_items))
+    
     write_tfRecord(
         header=header,
         header_gt=header_gt,

@@ -543,10 +543,11 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
     if not os.path.exists(depth_output_png_dir):
         os.mkdir(depth_output_png_dir)
 
-    # selectedResult = [0]
+    selectedResult = [0]
+    # selectedResult = [1, 2, 4, 8, 16, 32, 64, 128, 256]
     # selectedResult = range(315, 350)
-    # selectedResult = [4]
-    selectedResult = range(len(result))
+    # selectedResult = [40]
+    # selectedResult = range(len(result))
 
     for i in selectedResult:
         pre_depth_path = os.path.join(pre_depth_dir, '{:05d}'.format(i))
@@ -579,7 +580,7 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
         height = 350
         width = 450
         # only used in error output
-        mxd = 50 * 0.001 * dshift   # dep = 50mm ~ -50mm
+        mxd = 70 * 0.001 * dshift   # dep = 50mm ~ -50mm
         gradR = [255, 255, 0]
         gradG = [0, 255, 0]
         gradB = [0, 255, 255]
@@ -673,7 +674,7 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
             rgb_png = rgb_png.convert("L")
             rgb_png.save(rgb_input_path)
             
-            # pre_depth.tofile(pre_depth_path)
+            pre_depth.tofile(pre_depth_path)
 
         elif flag == 'refined_error':
             input_depth_png = input_depth * dshift
@@ -711,9 +712,9 @@ def dataset_output(result_path, evaluate_data_path, model_dir, batch_size, check
             input_depth_png = np.reshape(input_depth_list, (height, width))
             output_depth_png = np.reshape(output_depth_list, (height, width, 3))
 
-            input_depth_png = Image.fromarray(input_depth_png)
-            input_depth_png = input_depth_png.convert("L")
-            input_depth_png.save(depth_input_png_path)
+            # input_depth_png = Image.fromarray(input_depth_png)
+            # input_depth_png = input_depth_png.convert("L")
+            # input_depth_png.save(depth_input_png_path)
 
             output_depth_png = Image.fromarray(output_depth_png.astype(np.uint8))
             output_depth_png = output_depth_png.convert("RGB")

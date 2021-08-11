@@ -13,12 +13,17 @@ elif [ "$1" = "SKIP" ]
 then
     echo "Skip TFRecord Writing."
 else
-    STEP=$1
+    SAMPS=$1
+    EPOCH=$2
 fi
 
-LR=0.04
+LR=0.1
+STEP=$(( 200000 + EPOCH * SAMPS / 2 ))
+ESTEP=$(( SAMPS / 2 ))
 STIME=$(date)
 echo $STIME
+echo STEP=$STEP
+echo ESTEP=$ESTEP
 ## ---- 50K
 python start.py --batchSize 2\
  --steps $STEP --modelName sample_pyramid_add_kpn\
@@ -26,7 +31,7 @@ python start.py --batchSize 2\
    --lr $LR --trainingSet yee --imageShape 350 450\
     --lossType mean_l1 --addGradient sobel_gradient\
      --gpuNumber 4\
-      --evalSteps 57\
+      --evalSteps $ESTEP\
       --flagMode train
 
 echo $STIME
